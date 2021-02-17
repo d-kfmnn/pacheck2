@@ -1,0 +1,22 @@
+CC=@CC@
+CFLAGS=@CFLAGS@
+AIGLIB=@AIGLIB@
+DEP=@DEP@
+
+BUILD_PATH=build/
+SRC_PATH=src/
+SRC      :=  $(wildcard src/*.cpp) \
+
+OBJECTS := $(SRC:$(SRC_PATH)%.cpp=$(BUILD_PATH)%.o)
+
+all: pacheck
+
+$(BUILD_PATH)%.o: $(SRC_PATH)%.cpp
+	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
+
+pacheck: $(OBJECTS)
+	$(CC) $(CFLAGS)  -o  $@  $(OBJECTS)  -lgmp
+
+clean:
+	rm -f pacheck makefile \
+	rm -rf build/
