@@ -113,7 +113,6 @@ static void polynomials_do_not_match(
   fputs("\ndoes not match expected result:\n", stderr);
   expected->print(stderr);
   fputc('\n', stderr);
-//  fprintf(stdout, "%i %i", actual->size(), expected->size());
   fflush(stderr);
   exit(1);
 }
@@ -305,7 +304,7 @@ static void parse_lin_combination_rule(int index) {
 
     factor_array.push_back(tmp);
     merge_products();
-    
+
 
     if (is_plus_token()) {
       addition_operations++;

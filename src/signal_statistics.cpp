@@ -129,8 +129,7 @@ void print_statistics(unsigned original_inferences,
   unsigned multiplication_operations) {
   msg("");
   msg("proof length: %22i (total number of polynomials)", length_proof);
-  msg("proof size:   %22i (total number of monomials)",
-    size_proof, average(size_proof, length_proof));
+  msg("proof size:   %22i (total number of monomials)",  size_proof);
   msg("proof degree: %22i ", degree_proof);
   msg("");
 

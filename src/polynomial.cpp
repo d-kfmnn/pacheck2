@@ -11,18 +11,14 @@
 /*------------------------------------------------------------------------*/
 
 Polynomial::Polynomial(Monomial * m, Polynomial * p):
-  mon(m), rest(p) {}
+  mon(m), rest(p) {
+    if(m && !p) siz = 1;
+    else if (m && p) siz = p->siz+1;
+  }
 
 
 unsigned Polynomial::size() const {
-  const Polynomial * res = this;
-  int count = 0;
-
-  while(res){
-    count++;
-    res = res->rest;
-  }
-  return count;
+  return siz;
 }
 
 
@@ -239,7 +235,7 @@ Polynomial * build_poly(bool need_sorting) {
   int i = num_mstack;
   if(!i) res = new Polynomial(0, 0);
   while (i > 0) {
-    res = new Polynomial (mstack[--i], res);
+    res = new Polynomial(mstack[--i], res);
   }
 
 

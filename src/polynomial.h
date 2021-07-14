@@ -26,6 +26,7 @@ class Polynomial {
 
   Monomial * mon = 0;
   Polynomial * rest;
+  unsigned siz = 0;
 
  public:
 
