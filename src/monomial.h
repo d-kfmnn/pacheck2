@@ -109,9 +109,6 @@ void deallocate_monomial(Monomial * m);
 
 
 /*---------------------------------------------------------------------------*/
-/// gmp coeff
-extern mpz_t dummy_gmp;
-/*---------------------------------------------------------------------------*/
 /**
     Initializes all global gmp objects
 

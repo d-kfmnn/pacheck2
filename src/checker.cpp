@@ -113,7 +113,7 @@ static void polynomials_do_not_match(
   fputs("\ndoes not match expected result:\n", stderr);
   expected->print(stderr);
   fputc('\n', stderr);
-  fprintf(stdout, "%i %i", actual->size(), expected->size());
+//  fprintf(stdout, "%i %i", actual->size(), expected->size());
   fflush(stderr);
   exit(1);
 }
@@ -127,7 +127,7 @@ static void polynomials_do_not_match(
     @return true if p is a valid extension variable
 */
 static bool check_for_valid_extension_var(const Polynomial * p) {
-  if (p->size() > 1) return 0;
+  if (p->get_rest()) return 0;
   if (mpz_cmp_si(p->get_lm()->coeff, 1) != 0) return 0;
 
   Term *t = p->get_lt();
@@ -212,7 +212,7 @@ static void parse_extension_rule(unsigned index) {
 /*------------------------------------------------------------------------*/
 
 /// used to collect the factors of each slice for PAC proofs
-static std::vector<Polynomial*> factor_array;
+static std::vector<const Polynomial*> factor_array;
 
 /*-------------------------------------------------------------------------*/
 /**
@@ -221,11 +221,13 @@ static std::vector<Polynomial*> factor_array;
     @return Polynomial *
 
 */
-static Polynomial * add_up_products() {
+static const Polynomial * add_up_products() {
+  if(factor_array.empty()) return zero_poly();
+
   while (factor_array.size() > 1) {
-    Polynomial * p = factor_array.back();
+    const Polynomial * p = factor_array.back();
     factor_array.pop_back();
-    Polynomial * q = factor_array.back();
+    const Polynomial * q = factor_array.back();
     factor_array.pop_back();
 
     Polynomial * add = add_poly(p, q);
@@ -233,7 +235,7 @@ static Polynomial * add_up_products() {
     delete(q);
     factor_array.push_back(add);
   }
-  Polynomial * res = factor_array.back();
+  const Polynomial * res = factor_array.back();
   factor_array.pop_back();
   return res;
 }
@@ -245,8 +247,8 @@ static Polynomial * add_up_products() {
 static void merge_products() {
   unsigned i = factor_array.size();
   if (i == 1) return;
-  Polynomial * p = factor_array[i-1];
-  Polynomial * q = factor_array[i-2];
+  const Polynomial * p = factor_array[i-1];
+  const Polynomial * q = factor_array[i-2];
   int p_level = p->get_level();
 
   if (p_level == q->get_level()) {
@@ -276,7 +278,7 @@ static void parse_lin_combination_rule(int index) {
   unsigned rule_line = lineno_at_start_of_last_token;
   unsigned p_index;
   const Inference * i0;
-  Polynomial * tmp, * conclusion = 0;
+  const Polynomial * tmp, * conclusion = 0;
 
   next_token();
   while (!is_comma_token()) {
@@ -300,9 +302,10 @@ static void parse_lin_combination_rule(int index) {
       tmp = i0->get_conclusion()->copy();
     }
 
+
     factor_array.push_back(tmp);
     merge_products();
-
+    
 
     if (is_plus_token()) {
       addition_operations++;
@@ -311,6 +314,7 @@ static void parse_lin_combination_rule(int index) {
       parse_error("unexpected '%s'", get_token());
     }
   }
+
   conclusion = add_up_products();
 
   unsigned p2_line = lineno_at_start_of_last_token;
@@ -321,12 +325,14 @@ static void parse_lin_combination_rule(int index) {
     polynomials_do_not_match(index, p2, conclusion, rule_line, p2_line);
   delete(p2);
 
-  if (check_target && equal_polynomials(conclusion, target)) {
+  if (check_target && equal_polynomials(target, conclusion)) {
     target_polynomial_inferences = 1;
   }
 
   new_inference(index, conclusion);
+
   lin_comb_inferences++;
+
 }
 
 /***************************************************************************/
@@ -426,7 +432,6 @@ void parse_target_polynomial(const char * file_name) {
 
 void parse_and_check_proof(const char * polys_file_name,
                            const char * rule_file_name) {
-  init_mpz();
   parse_original_polynomials(polys_file_name);
   parse_and_check_proof_rules(rule_file_name);
 }
@@ -442,7 +447,6 @@ void checker_statistics() {
 /*------------------------------------------------------------------------*/
 
 void reset() {
-  clear_mpz();
   delete(target);
   delete_inferences();
 

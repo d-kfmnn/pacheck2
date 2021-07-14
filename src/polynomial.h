@@ -24,9 +24,14 @@ class Polynomial {
 
   int level = 1;  ///< level of polynomials needed for certificates
 
-  std::deque<Monomial*> mon;  ///< sorted deque of monomials
+  Monomial * mon = 0;
+  Polynomial * rest;
 
  public:
+
+  Polynomial(Monomial * m, Polynomial * p);
+
+
   /** Getter for member idx
 
       @return integer
@@ -53,38 +58,27 @@ class Polynomial {
   */
   void set_level(int level_) {level = level_;}
 
-  /**
-      Getter for begin of mon
+  /** Returns the leading monomial
 
-      @return std::deque<Monomial*>::const_iterator
+      @return Monomial*
   */
-  std::deque<Monomial*>::const_iterator mon_begin() const {return mon.begin();}
+  Monomial* get_lm() const {return mon;}
 
-  /**
-      Getter for end of mon
 
-      @return std::deque<Monomial*>::const_iterator
-  */
-  std::deque<Monomial*>::const_iterator mon_end() const {return mon.end();}
 
-  /**
-      Appends monomial m to mon
-
-      @param m Monomial*
-  */
-  void mon_push_back(Monomial * m) {mon.push_back(m);}
 
   /** Returns the leading term
 
       @return Term*
   */
-  Term * get_lt() const {return mon.front()->get_term();}
+  Term * get_lt() const {return mon->get_term();}
 
-  /** Returns the leading monomial
+  /**
+      Returns the number of monomials
 
-      @return Monomial*
+      @return unsigned
   */
-  Monomial * get_lm() const {return mon.front();}
+  unsigned size() const;
 
   /**
       Returns the size of the smallest term
@@ -94,11 +88,11 @@ class Polynomial {
   unsigned min_term_size() const;
 
   /**
-      Returns number of monomials in polynomial
+      Getter for rest
 
-      @return unsigned
+      @return Polynomial*
   */
-  unsigned size() const {return mon.size();}
+  Polynomial* get_rest() const {return rest;}
 
   /**
       Returns the degree of a polynomial
@@ -159,7 +153,7 @@ void push_mstack(Monomial *t);
     Generates a polynomial from mstack and clears mstack
 
     @param need_sorting indicates whether stack needs sorting first
-    
+
     @return Polynomial*
 */
 Polynomial * build_poly(bool need_sorting);
@@ -205,6 +199,9 @@ Polynomial * multiply_poly(const Polynomial *p1, const Polynomial *p2);
     @return Polynomial*
 */
 Polynomial * negate_poly(const Polynomial *p1);
+
+
+Polynomial * zero_poly();
 
 
 /*---------------------------------------------------------------------------*/

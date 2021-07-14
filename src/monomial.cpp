@@ -49,7 +49,7 @@ void Monomial::print(FILE * file, bool lm) const {
     } else if (mpz_cmp_si(coeff, 1) != 0) {
       mpz_out_str(file, 10, coeff);
       fputc_unlocked('*', file);
-    } 
+    }
 
     term->print(file);
   }
@@ -62,7 +62,10 @@ Monomial * multiply_monomial(const Monomial * m1, const Monomial *m2) {
   assert(m1);
   assert(m2);
 
-  mpz_mul(dummy_gmp, m1->coeff, m2->coeff);
+  mpz_t tmp_gmp;
+  mpz_init(tmp_gmp);
+
+  mpz_mul(tmp_gmp, m1->coeff, m2->coeff);
 
   Term * t;
   if (m1->get_term() && m2->get_term())
@@ -72,14 +75,16 @@ Monomial * multiply_monomial(const Monomial * m1, const Monomial *m2) {
   else
     t = 0;
 
-  Monomial * mon = new Monomial(dummy_gmp, t);
-
+  Monomial * mon = new Monomial(tmp_gmp, t);
+  mpz_clear(tmp_gmp);
   return mon;
 }
 
 /*------------------------------------------------------------------------*/
 
 void deallocate_monomial(Monomial * m) {
+  if(!m) return;
+
   assert(m->get_ref() > 0);
   if (m->dec_ref() > 0) return;
 
@@ -87,18 +92,5 @@ void deallocate_monomial(Monomial * m) {
 }
 
 
-mpz_t dummy_gmp;
-
-/*------------------------------------------------------------------------*/
-
-void init_mpz() {
-  mpz_init(dummy_gmp);
-}
-
-/*------------------------------------------------------------------------*/
-
-void clear_mpz() {
-  mpz_clear(dummy_gmp);
-}
 
 /*------------------------------------------------------------------------*/

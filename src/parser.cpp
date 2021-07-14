@@ -315,17 +315,21 @@ static Term * parse_term(bool new_var_allowed) {
     @param new_var_allowed bool
 */
 static Monomial * parse_monomial(bool sign, bool new_var_allowed) {
+  mpz_t tmp_gmp;
+  mpz_init(tmp_gmp);
   if (token == NUMBER_TOKEN) {
-    mpz_set_str(dummy_gmp, buffer, 10);
+    mpz_set_str(tmp_gmp, buffer, 10);
     next_token();
-  } else if (token == VARIABLE_TOKEN) { mpz_set_ui(dummy_gmp, 1);
+  } else if (token == VARIABLE_TOKEN) { mpz_set_ui(tmp_gmp, 1);
   } else {
     parse_error("expected monomial");
   }
-  if (sign) mpz_neg(dummy_gmp, dummy_gmp);
+  if (sign) mpz_neg(tmp_gmp, tmp_gmp);
   if (token == MULTIPLY_TOKEN) next_token();
   Term * term = parse_term(new_var_allowed);
-  Monomial * res = new Monomial(dummy_gmp, term);
+
+  Monomial * res = new Monomial(tmp_gmp, term);
+  mpz_clear(tmp_gmp);
   return res;
 }
 

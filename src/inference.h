@@ -15,7 +15,7 @@
 
 class Inference {
   unsigned id;                     ///< unique identification index
-  const Polynomial * conclusion;   ///< produced / added polynomial
+  const Polynomial * conclusion = 0;   ///< produced / added polynomial
   Inference * chronological_next;  ///< next doubly linked list
   Inference * chronological_prev;  ///< prev doubly linked list
 

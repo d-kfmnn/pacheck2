@@ -10,16 +10,32 @@
 #include "polynomial.h"
 /*------------------------------------------------------------------------*/
 
+Polynomial::Polynomial(Monomial * m, Polynomial * p):
+  mon(m), rest(p) {}
+
+
+unsigned Polynomial::size() const {
+  const Polynomial * res = this;
+  int count = 0;
+
+  while(res){
+    count++;
+    res = res->rest;
+  }
+  return count;
+}
+
+
 unsigned Polynomial::min_term_size() const {
     unsigned len = INT_MAX;
+    const Polynomial * res = this;
 
-    for (std::deque<Monomial *>::const_iterator it = mon_begin();
-        it != mon_end(); ++it) {
-      Monomial * m = *it;
-
+    while(res){
+      Monomial * m = res->get_lm();
       unsigned tlen = 0;
-      if (m->get_term()) tlen=m->get_term_size();
+      if (m->get_term()) tlen = m->get_term_size();
       if (tlen < len) len = tlen;
+      res = res->rest;
     }
     return len;
 }
@@ -28,13 +44,14 @@ unsigned Polynomial::min_term_size() const {
 
 unsigned Polynomial::degree() const {
     unsigned len = 0;
+    const Polynomial * res = this;
 
-    for (std::deque<Monomial *>::const_iterator it = mon_begin();
-        it != mon_end(); ++it) {
-      Monomial * m = *it;
+    while(res){
+      Monomial * m = res->get_lm();
       unsigned tlen = 0;
-      if (m->get_term()) tlen = m->get_term_size();
+      if (m && m->get_term()) tlen = m->get_term_size();
       if (tlen > len) len = tlen;
+      res = res->rest;
     }
     return len;
 }
@@ -42,15 +59,20 @@ unsigned Polynomial::degree() const {
 /*------------------------------------------------------------------------*/
 
 bool Polynomial::is_constant_zero_poly() const {
-  return mon.empty();
+  const Polynomial * res = this;
+  if(!res) return 1;
+  if(!res->get_lm() && !res->get_rest()) return 1;
+  return 0;
 }
 
 /*------------------------------------------------------------------------*/
 
 bool Polynomial::is_constant_one_poly() const {
-  if (mon.size() != 1) return 0;
+  const Polynomial * res = this;
 
-  Monomial * m = mon.front();
+  if (res->size() != 1) return 0;
+
+  Monomial * m = res->get_lm();
   if (m->get_term()) return 0;
   if (mpz_cmp_si(m->coeff, 1) != 0) return 0;
 
@@ -60,39 +82,47 @@ bool Polynomial::is_constant_one_poly() const {
 /*------------------------------------------------------------------------*/
 
 Polynomial * Polynomial::copy() const {
-  Polynomial * out = new Polynomial();
-  for (std::deque<Monomial *>::const_iterator it = mon_begin();
-      it != mon_end(); ++it) {
-    Monomial * m = *it;
-    out->mon.push_back(m->copy());
+  const Polynomial * res = this;
+  if(res->is_constant_zero_poly()) return zero_poly();
+  while(res){
+    push_mstack(res->get_lm()->copy());
+    res = res->get_rest();
   }
+  Polynomial * out = build_poly(0);
   return out;
 }
 
 /*------------------------------------------------------------------------*/
 
 void Polynomial::print(FILE * file, bool end) const {
-  if (mon.empty()) { fputs_unlocked("0", file);
+  const Polynomial * res = this;
+
+  if (!res) {fputc ('0', file);
+  } else if(!res->rest) {
+    Monomial * m = res->get_lm();
+    if(m) m->print(file, 1);
+    else fputc ('0', file);
   } else {
-    for (std::deque<Monomial *>::const_iterator it = mon_begin();
-         it != mon_end(); ++it) {
-      Monomial * m = *it;
-      if (it == mon_begin()) m->print(file, 1);
-      else
-        m->print(file, 0);
+    Monomial * m = res->get_lm();
+    if(m) m->print(file, 1);
+
+    for (Polynomial * q = res->rest; q; q = q->rest) {
+      if(q->get_lm()) q->get_lm()->print(file, 0);
     }
   }
   if (end) fputs(";\n", file);
 }
 
+
 /*------------------------------------------------------------------------*/
 
 Polynomial::~Polynomial() {
-  for (std::deque<Monomial *>::const_iterator it = mon_begin();
-      it != mon_end(); ++it)
-
-    deallocate_monomial(*it);
+  Polynomial * res = this;
+  Polynomial * rest = res->get_rest();
+  deallocate_monomial(res->get_lm());
+  delete(rest);
 }
+
 
 /*------------------------------------------------------------------------*/
 
@@ -164,16 +194,19 @@ static void merge_monomials () {
   Monomial * a = 0;
   size_t i = 0;
 
+  mpz_t tmp_gmp;
+  mpz_init(tmp_gmp);
+
   for (size_t j = 0; j < num_mstack; j++) {
     Monomial * b = mstack[j];
     if (mpz_sgn(b->coeff) == 0) {
       deallocate_monomial(b);
       i--;
     } else if (a && a->get_term() == b->get_term()) {
-      mpz_add(dummy_gmp, a->coeff, b->coeff);
+      mpz_add(tmp_gmp, a->coeff, b->coeff);
       deallocate_monomial(b);
-      if (mpz_sgn(dummy_gmp) != 0) {
-        Monomial * c = new Monomial(dummy_gmp, a->get_term()->copy());
+      if (mpz_sgn(tmp_gmp) != 0) {
+        Monomial * c = new Monomial(tmp_gmp, a->get_term()->copy());
         deallocate_monomial(a);
         mstack[i-1] = c;
         a = c;
@@ -189,6 +222,8 @@ static void merge_monomials () {
       a = b;
     }
   }
+
+  mpz_clear(tmp_gmp);
   num_mstack = i;
 }
 
@@ -200,111 +235,123 @@ Polynomial * build_poly(bool need_sorting) {
     sort_monomials();
     merge_monomials();
   }
-  Polynomial * res = new Polynomial();
-  for (size_t i = 0; i< num_mstack; i++) {
-    res->mon_push_back(mstack[i]);
+  Polynomial * res = 0;
+  int i = num_mstack;
+  if(!i) res = new Polynomial(0, 0);
+  while (i > 0) {
+    res = new Polynomial (mstack[--i], res);
   }
+
 
   clear_mstack();
   return res;
 }
+
 
 /*------------------------------------------------------------------------*/
 
 bool equal_polynomials(const Polynomial * p1, const Polynomial * p2) {
   assert(p1);
   assert(p2);
+  if (p1->is_constant_zero_poly() && p2->is_constant_zero_poly()) return 1;
 
+  const Polynomial * tmp1 = p1;
+  const Polynomial * tmp2 = p2;
 
-  std::deque<Monomial*>::const_iterator it1 = p1->mon_begin()++;
-  std::deque<Monomial*>::const_iterator it2 = p2->mon_begin()++;
-  Monomial * m1 = *it1;
-  Monomial * m2 = *it2;
+  Monomial * m1, * m2;
 
-  while (it1 != p1->mon_end() && it2 != p2->mon_end()) {
-    if (m1->get_term() != m2->get_term()) {
-      return 0;
-    }
-    if (mpz_cmp(m1->coeff, m2->coeff) != 0) {
-      return 0;
-    }
-    ++it1;
-    ++it2;
-    m1 = *it1;
-    m2 = *it2;
+  while (tmp1 && tmp2) {
+    m1 = tmp1->get_lm();
+    m2 = tmp2->get_lm();
+    if (m1 == m2) return 1;
+    if (!m1) return 0;
+    if (!m2) return 0;
+    if (m1->get_term() != m2->get_term()) return 0;
+    if (mpz_cmp(m1->coeff, m2->coeff) != 0) return 0;
+
+    tmp1 = tmp1->get_rest();
+    tmp2 = tmp2->get_rest();
+
   }
 
-  if (it1 != p1->mon_end()) return 0;
-  if (it2 != p2->mon_end()) return 0;
+  if (tmp1 || tmp2 ) return 0;
   return 1;
 }
 
 /*------------------------------------------------------------------------*/
 
 Polynomial * add_poly(const Polynomial * p1, const Polynomial * p2) {
+
+  if(p1->is_constant_zero_poly() && p2->is_constant_zero_poly()) return zero_poly();
+  if(p1->is_constant_zero_poly()) return p2->copy();
+  if(p2->is_constant_zero_poly()) return p1->copy();
+
   assert(p1);
   assert(p2);
 
-  std::deque<Monomial*>::const_iterator it1 = p1->mon_begin()++;
-  std::deque<Monomial*>::const_iterator it2 = p2->mon_begin()++;
-  Monomial * m1 = *it1;
-  Monomial * m2 = *it2;
-  while (it1 != p1->mon_end() && it2 != p2->mon_end()) {
+  mpz_t tmp_gmp;
+  mpz_init(tmp_gmp);
+
+  const Polynomial * tmp1 = p1;
+  const Polynomial * tmp2 = p2;
+  Monomial * m1, *m2;
+
+  while (tmp1 && tmp2) {
+    m1 = tmp1->get_lm();
+    m2 = tmp2->get_lm();
+
     if (!m1->get_term() || !m2->get_term()) {
       if (!m1->get_term() && !m2->get_term()) {
-        mpz_add(dummy_gmp, m1->coeff, m2->coeff);
-        if (mpz_sgn(dummy_gmp) != 0) {
-          Monomial * m = new Monomial(dummy_gmp, 0);
+        mpz_add(tmp_gmp, m1->coeff, m2->coeff);
+        if (mpz_sgn(tmp_gmp) != 0) {
+          Monomial * m = new Monomial(tmp_gmp, 0);
           push_mstack(m);
         }
-        ++it1;
-        ++it2;
-        m1 = *it1;
-        m2 = *it2;
+        tmp1 = tmp1->get_rest();
+        tmp2 = tmp2->get_rest();
+
+
       } else if (!m1->get_term()) {
         push_mstack(m2->copy());
-        ++it2;
-        m2 = *it2;
+        tmp2 = tmp2->get_rest();
       } else {
         push_mstack(m1->copy());
-        ++it1;
-        m1 = *it1;
+        tmp1 = tmp1->get_rest();
       }
     } else {
       if (m1->get_term() == m2->get_term()) {
-        mpz_add(dummy_gmp, m1->coeff, m2->coeff);
-        if (mpz_sgn(dummy_gmp) != 0) {
-          Monomial * m = new Monomial(dummy_gmp, m1->get_term_copy());
+        mpz_add(tmp_gmp, m1->coeff, m2->coeff);
+        if (mpz_sgn(tmp_gmp) != 0) {
+          Monomial * m = new Monomial(tmp_gmp, m1->get_term_copy());
           push_mstack(m);
         }
-        ++it1;
-        ++it2;
-        m1 = *it1;
-        m2 = *it2;
-
+        tmp1 = tmp1->get_rest();
+        tmp2 = tmp2->get_rest();
       } else {
         if (m1->get_term()->cmp(m2->get_term()) > 0) {
           push_mstack(m1->copy());
-          ++it1;
-          m1 = *it1;
+          tmp1 = tmp1->get_rest();
         } else {
           push_mstack(m2->copy());
-          ++it2;
-          m2 = *it2;
+          tmp2 = tmp2->get_rest();
         }
       }
     }
   }
 
-  while (it1 != p1->mon_end()) {
+  mpz_clear(tmp_gmp);
+
+  while (tmp1) {
+    m1 = tmp1->get_lm();
     push_mstack(m1->copy());
-    ++it1;
-    m1 = *it1;
+    tmp1 = tmp1->get_rest();
+
   }
-  while (it2 != p2->mon_end()) {
+  while (tmp2) {
+    m2 = tmp2->get_lm();
     push_mstack(m2->copy());
-    ++it2;
-    m2 = *it2;
+    tmp2 = tmp2->get_rest();
+
   }
 
   Polynomial * p = build_poly(0);
@@ -315,17 +362,23 @@ Polynomial * add_poly(const Polynomial * p1, const Polynomial * p2) {
 /*------------------------------------------------------------------------*/
 
 Polynomial * multiply_poly(const Polynomial * p1, const Polynomial * p2) {
+
+  if(p1->is_constant_zero_poly() || p2->is_constant_zero_poly()) return zero_poly();
+
   Term * t;
-  std::deque<Monomial*>::const_iterator it1 = p1->mon_begin();
-  std::deque<Monomial*>::const_iterator it2;
+  const Polynomial * tmp1 = p1;
+  const Polynomial * tmp2 = p2;
   const Monomial *m1, *m2;
 
-  while (it1 != p1->mon_end()) {
-    m1 = *it1;
-    it2 = p2->mon_begin();
-    while (it2 != p2->mon_end()) {
-      m2 = *it2;
-      mpz_mul(dummy_gmp, m1->coeff, m2->coeff);
+  mpz_t tmp_gmp;
+  mpz_init(tmp_gmp);
+
+  while (tmp1) {
+    m1 = tmp1->get_lm();
+    tmp2 = p2;
+    while (tmp2) {
+      m2 = tmp2->get_lm();
+      mpz_mul(tmp_gmp, m1->coeff, m2->coeff);
 
       if (m1->get_term() && m2->get_term())
         t = multiply_term(m1->get_term(), m2->get_term());
@@ -333,11 +386,13 @@ Polynomial * multiply_poly(const Polynomial * p1, const Polynomial * p2) {
       else if (m1->get_term()) t = m1->get_term_copy();
       else
         t = 0;
-      push_mstack(new Monomial(dummy_gmp, t));
-      ++it2;
+      push_mstack(new Monomial(tmp_gmp, t));
+      tmp2 = tmp2->get_rest();
     }
-    ++it1;
+    tmp1 = tmp1->get_rest();
   }
+
+  mpz_clear(tmp_gmp);
 
   Polynomial * p = build_poly(1);
   return p;
@@ -346,17 +401,33 @@ Polynomial * multiply_poly(const Polynomial * p1, const Polynomial * p2) {
 /*------------------------------------------------------------------------*/
 
 Polynomial * negate_poly(const Polynomial *p1) {
-  for (std::deque<Monomial*>::const_iterator it = p1->mon_begin();
-      it != p1->mon_end(); ++it) {
-    Monomial * m = *it;
-    mpz_neg(dummy_gmp, m->coeff);
+
+  if(p1->is_constant_zero_poly()) return zero_poly();
+
+  mpz_t tmp_gmp;
+  mpz_init(tmp_gmp);
+
+  const Polynomial * tmp1 = p1;
+
+  while(tmp1){
+    Monomial * m = tmp1->get_lm();
+    mpz_neg(tmp_gmp, m->coeff);
     if (m->get_term())
-      push_mstack(new Monomial(dummy_gmp, m->get_term_copy()));
+      push_mstack(new Monomial(tmp_gmp, m->get_term_copy()));
     else
-      push_mstack(new Monomial(dummy_gmp, 0));
+      push_mstack(new Monomial(tmp_gmp, 0));
+
+    tmp1 = tmp1->get_rest();
   }
+
+  mpz_clear(tmp_gmp);
   Polynomial * tmp = build_poly(0);
   return tmp;
+}
+
+Polynomial * zero_poly() {
+  Polynomial * res = new Polynomial(0, 0);
+  return res;
 }
 
 /*------------------------------------------------------------------------*/
