@@ -6,9 +6,9 @@
   Copyright(C) 2020 Daniela Kaufmann, Johannes Kepler University Linz
 */
 /*------------------------------------------------------------------------*/
-#include <vector>
-
 #include "checker.h"
+
+#include <vector>
 /*------------------------------------------------------------------------*/
 // Global variables
 bool check_target = 1;
@@ -20,7 +20,7 @@ bool constant_one_polynomial_inferences = 0;
 // Local variables
 
 /// stores the target
-static Polynomial * target;
+static Polynomial *target;
 /// counts the number of inference rules
 static unsigned num_inference_rules;
 /// counts the number of axioms
@@ -42,7 +42,7 @@ static unsigned multiplication_operations;
 
     @param file_name  const char *
 */
-static void init_parsing(const char * file_name) {
+static void init_parsing(const char *file_name) {
   parse_file_name = file_name;
   parse_file = fopen(file_name, "r");
   if (!parse_file) die("can not open '%s' for reading", file_name);
@@ -70,12 +70,12 @@ static void reset_parsing() {
     @param rule_line unsigned
 */
 static void polynomial_not_found(
-  unsigned index, unsigned p_index, unsigned rule_line) {
+    unsigned index, unsigned p_index, unsigned rule_line) {
   fflush(stdout);
 
   fprintf(stderr, "*** 'pacheck' error in rule with index %i ", index);
   fprintf(stderr, " in '%s' line %i: polynomial with index %i not found",
-        parse_file_name, rule_line, p_index);
+          parse_file_name, rule_line, p_index);
 
   if (delete_mode) {
     fputs("\ndelete mode is ON - try '--no-delete'", stderr);
@@ -97,13 +97,13 @@ static void polynomial_not_found(
     @param polynomial_line unsigned
 */
 static void polynomials_do_not_match(
-  unsigned index, const Polynomial * actual, const Polynomial * expected,
-  unsigned rule_line, unsigned polynomial_line) {
+    unsigned index, const Polynomial *actual, const Polynomial *expected,
+    unsigned rule_line, unsigned polynomial_line) {
   fflush(stdout);
   fprintf(stderr, "*** 'pacheck' error in rule with index %i ", index);
 
   fprintf(stderr,
-    " in '%s' line %i: conclusion polynomial", parse_file_name, rule_line);
+          " in '%s' line %i: conclusion polynomial", parse_file_name, rule_line);
 
   if (rule_line != polynomial_line)
     fprintf(stderr, " line %i", polynomial_line);
@@ -125,7 +125,7 @@ static void polynomials_do_not_match(
 
     @return true if p is a valid extension variable
 */
-static bool check_for_valid_extension_var(const Polynomial * p) {
+static bool check_for_valid_extension_var(const Polynomial *p) {
   if (p->get_rest()) return 0;
   if (mpz_cmp_si(p->get_lm()->coeff, 1) != 0) return 0;
 
@@ -147,12 +147,12 @@ static bool check_for_valid_extension_var(const Polynomial * p) {
     @return true if p is a valid extension polynomial
 */
 static bool check_for_valid_extension_poly(
-  const Polynomial * p, const Var * v) {
+    const Polynomial *p, const Var *v) {
   if (v->get_count() > 1) return 0;
 
-  Polynomial * mult = multiply_poly(p, p);
+  Polynomial *mult = multiply_poly(p, p);
   bool zero = equal_polynomials(mult, p);
-  delete(mult);
+  delete (mult);
   return zero;
 }
 
@@ -168,29 +168,29 @@ static void parse_extension_rule(unsigned index) {
     parse_error("index %i already exists", index);
 
   unsigned line = lineno_at_start_of_last_token;
-  Polynomial * p1 = parse_polynomial();
+  Polynomial *p1 = parse_polynomial();
 
   if (!check_for_valid_extension_var(p1)) {
     fflush(stdout);
     fprintf(stderr, "*** 'pacheck' error in EXTENSION_RULE rule with index %i ",
-      index);
+            index);
     fprintf(stderr, " in '%s' line %i: extension variable is not valid",
-      parse_file_name, line);
+            parse_file_name, line);
     fputc('\n', stderr);
     fflush(stderr);
     exit(1);
   }
-  const Var * ext = p1->get_lt()->get_var();
+  const Var *ext = p1->get_lt()->get_var();
 
   assert(is_comma_token());
 
-  Polynomial * p2 = parse_polynomial(0);
+  Polynomial *p2 = parse_polynomial(0);
   if (!check_for_valid_extension_poly(p2, ext)) {
     fflush(stdout);
     fprintf(stderr, "*** 'pacheck' error in EXTENSION_RULE rule with index %i ",
-      index);
+            index);
     fprintf(stderr, " in '%s' line %i is not a valid extension polynomial",
-      parse_file_name, line);
+            parse_file_name, line);
     fputc('\n', stderr);
     fflush(stderr);
     exit(1);
@@ -198,11 +198,11 @@ static void parse_extension_rule(unsigned index) {
 
   if (!is_semicolon_token()) parse_error("unexpected %s token", get_token());
 
-  Polynomial * p3 = negate_poly(p1);
-  Polynomial * q = add_poly(p2, p3);
-  delete(p1);
-  delete(p2);
-  delete(p3);
+  Polynomial *p3 = negate_poly(p1);
+  Polynomial *q = add_poly(p2, p3);
+  delete (p1);
+  delete (p2);
+  delete (p3);
 
   new_inference(index, q);
   extension_inferences++;
@@ -211,7 +211,7 @@ static void parse_extension_rule(unsigned index) {
 /*------------------------------------------------------------------------*/
 
 /// used to collect the factors of each slice for PAC proofs
-static std::vector<const Polynomial*> factor_array;
+static std::vector<const Polynomial *> factor_array;
 
 /*-------------------------------------------------------------------------*/
 /**
@@ -220,21 +220,21 @@ static std::vector<const Polynomial*> factor_array;
     @return Polynomial *
 
 */
-static const Polynomial * add_up_products() {
-  if(factor_array.empty()) return zero_poly();
+static const Polynomial *add_up_products() {
+  if (factor_array.empty()) return zero_poly();
 
   while (factor_array.size() > 1) {
-    const Polynomial * p = factor_array.back();
+    const Polynomial *p = factor_array.back();
     factor_array.pop_back();
-    const Polynomial * q = factor_array.back();
+    const Polynomial *q = factor_array.back();
     factor_array.pop_back();
 
-    Polynomial * add = add_poly(p, q);
-    delete(p);
-    delete(q);
+    Polynomial *add = add_poly(p, q);
+    delete (p);
+    delete (q);
     factor_array.push_back(add);
   }
-  const Polynomial * res = factor_array.back();
+  const Polynomial *res = factor_array.back();
   factor_array.pop_back();
   return res;
 }
@@ -246,15 +246,15 @@ static const Polynomial * add_up_products() {
 static void merge_products() {
   unsigned i = factor_array.size();
   if (i == 1) return;
-  const Polynomial * p = factor_array[i-1];
-  const Polynomial * q = factor_array[i-2];
+  const Polynomial *p = factor_array[i - 1];
+  const Polynomial *q = factor_array[i - 2];
   int p_level = p->get_level();
 
   if (p_level == q->get_level()) {
-    Polynomial * add = add_poly(p, q);
-    delete(p);
-    delete(q);
-    add->set_level(p_level+1);
+    Polynomial *add = add_poly(p, q);
+    delete (p);
+    delete (q);
+    add->set_level(p_level + 1);
 
     factor_array.pop_back();
     factor_array.pop_back();
@@ -276,8 +276,8 @@ static void parse_lin_combination_rule(int index) {
 
   unsigned rule_line = lineno_at_start_of_last_token;
   unsigned p_index;
-  const Inference * i0;
-  const Polynomial * tmp, * conclusion = 0;
+  const Inference *i0;
+  const Polynomial *tmp, *conclusion = 0;
 
   next_token();
   while (!is_comma_token()) {
@@ -291,9 +291,9 @@ static void parse_lin_combination_rule(int index) {
       next_token();
       if (!is_open_parenthesis_token()) parse_error("expected '('");
 
-      Polynomial * p = parse_polynomial(0);
+      Polynomial *p = parse_polynomial(0);
       tmp = multiply_poly(i0->get_conclusion(), p);
-      delete(p);
+      delete (p);
 
       assert(is_close_parenthesis_token());
       next_token();
@@ -301,10 +301,8 @@ static void parse_lin_combination_rule(int index) {
       tmp = i0->get_conclusion()->copy();
     }
 
-
     factor_array.push_back(tmp);
     merge_products();
-
 
     if (is_plus_token()) {
       addition_operations++;
@@ -322,7 +320,7 @@ static void parse_lin_combination_rule(int index) {
 
   if (!equal_polynomials(p2, conclusion))
     polynomials_do_not_match(index, p2, conclusion, rule_line, p2_line);
-  delete(p2);
+  delete (p2);
 
   if (check_target && equal_polynomials(target, conclusion)) {
     target_polynomial_inferences = 1;
@@ -331,7 +329,6 @@ static void parse_lin_combination_rule(int index) {
   new_inference(index, conclusion);
 
   lin_comb_inferences++;
-
 }
 
 /***************************************************************************/
@@ -342,7 +339,7 @@ static void parse_lin_combination_rule(int index) {
 
 */
 
-static void parse_original_polynomials(const char * file_name) {
+static void parse_original_polynomials(const char *file_name) {
   init_parsing(file_name);
   msg("reading original polynomials from '%s'", parse_file_name);
   int original = 0;
@@ -353,7 +350,7 @@ static void parse_original_polynomials(const char * file_name) {
     if (find_inference_index(index))
       parse_error("error in line %i index %i already exists", line, index);
 
-    Polynomial * p = parse_polynomial();
+    Polynomial *p = parse_polynomial();
     if (!is_semicolon_token())
       parse_error("error in line %i unexpected %s token", line, get_token());
 
@@ -379,46 +376,52 @@ static void parse_original_polynomials(const char * file_name) {
     @param file_name const char *
 
 */
-static void parse_and_check_proof_rules(const char * file_name) {
+static void parse_and_check_proof_rules(const char *file_name) {
   init_parsing(file_name);
   msg("reading polynomial algebraic calculus proof from '%s'",
-    parse_file_name);
+      parse_file_name);
   unsigned checked = 0, extensions = 0;
 
   while (!following_token_is_EOF()) {
-    int index = parse_index();
-    next_token();
-
-    if (is_delete_token()) {
-      deletion_inferences++;
-      if (delete_mode) delete_inference_by_index(index);
+    if (is_potential_pattern_token()) {
+      parse_pattern();
+    }      
+    else {
+      
+      size_t index = parse_index();
       next_token();
-      if (!is_semicolon_token())
-        parse_error("unexpected %s token", get_token());
-    } else if (is_extension_token()) {
-      parse_extension_rule(index);
-      extensions++;
-      num_inference_rules++;
-      checked++;
-    } else if (is_lin_combi_token()) {
-      parse_lin_combination_rule(index);
-      num_inference_rules++;
-      checked++;
-      if (verbose && checked % 1000 == 0)
-           msg("found and checked %6" PRIu64 " inferences so far", checked);
-    } else {
-      parse_error("expected operator 'd', '=' or '%%'");
+
+      if (is_delete_token()) {
+        deletion_inferences++;
+        if (delete_mode) delete_inference_by_index(index);
+        next_token();
+        if (!is_semicolon_token())
+          parse_error("unexpected %s token", get_token());
+      } else if (is_extension_token()) {
+        parse_extension_rule(index);
+        extensions++;
+        num_inference_rules++;
+        checked++;
+      } else if (is_lin_combi_token()) {
+        parse_lin_combination_rule(index);
+        num_inference_rules++;
+        checked++;
+        if (verbose && checked % 1000 == 0)
+          msg("found and checked %6" PRIu64 " inferences so far", checked);
+      } else {
+        parse_error("expected operator 'd', '=' or '%%'");
+      }
     }
   }
 
   msg("found and checked %" PRIu64 " inferences in '%s'",
-    checked, parse_file_name);
+      checked, parse_file_name);
   reset_parsing();
 }
 
 /*------------------------------------------------------------------------*/
 
-void parse_target_polynomial(const char * file_name) {
+void parse_target_polynomial(const char *file_name) {
   init_parsing(file_name);
   msg("reading target polynomial from '%s'", parse_file_name);
   target = parse_polynomial();
@@ -429,8 +432,8 @@ void parse_target_polynomial(const char * file_name) {
 
 /*------------------------------------------------------------------------*/
 
-void parse_and_check_proof(const char * polys_file_name,
-                           const char * rule_file_name) {
+void parse_and_check_proof(const char *polys_file_name,
+                           const char *rule_file_name) {
   parse_original_polynomials(polys_file_name);
   parse_and_check_proof_rules(rule_file_name);
 }
@@ -439,14 +442,14 @@ void parse_and_check_proof(const char * polys_file_name,
 
 void checker_statistics() {
   print_statistics(original_inferences, extension_inferences,
-    lin_comb_inferences, deletion_inferences, num_inference_rules,
-    addition_operations,
-    multiplication_operations);
+                   lin_comb_inferences, deletion_inferences, num_inference_rules,
+                   addition_operations,
+                   multiplication_operations);
 }
 /*------------------------------------------------------------------------*/
 
 void reset() {
-  delete(target);
+  delete (target);
   delete_inferences();
 
   deallocate_mstack();

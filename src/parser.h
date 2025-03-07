@@ -73,8 +73,11 @@ bool is_open_parenthesis_token();
 */
 bool is_close_parenthesis_token();
 
+bool is_curly_open_token();
+bool is_curly_close_token();
+
 /**
-    determins whether stored token is '='
+    determines whether stored token is '='
 
     @return bool
 */
@@ -93,6 +96,9 @@ bool is_lin_combi_token();
     @return bool
 */
 bool is_delete_token();
+
+
+bool is_potential_pattern_token();
 
 /**
     determins whether the next token  token is '\n'
@@ -121,7 +127,7 @@ Token next_token();
     @param msg const char *
 */
 void parse_error(const char * msg, ...);
-
+const Var * parse_variable(bool new_var_allowed);
 /**
     parses a polynomial, new variables are only allowed if new_var_allowed = 1
 
@@ -131,12 +137,14 @@ void parse_error(const char * msg, ...);
 */
 Polynomial * parse_polynomial(bool new_var_allowed = 1);
 
+std::string parse_word();
+
 /**
     parses an index
 
     @return unsigned
 */
-unsigned parse_index();
+size_t parse_index();
 
 /*------------------------------------------------------------------------*/
 #endif  // PACHECK2_SRC_PARSER_H_

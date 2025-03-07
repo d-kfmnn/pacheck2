@@ -172,6 +172,8 @@ static Token VARIABLE_TOKEN    = "variable";
 static Token EXTENSION_TOKEN   = "equal";
 static Token L_PARENTHESIS_TOKEN   = "open parenthesis";
 static Token R_PARENTHESIS_TOKEN   = "close parenthesis";
+static Token L_CURLY_TOKEN     = "open curly brace";
+static Token R_CURLY_TOKEN     = "close curly brace";
 /*------------------------------------------------------------------------*/
 
 bool is_semicolon_token()        { return token == SEMICOLON_TOKEN;}
@@ -180,6 +182,8 @@ bool is_plus_token()             { return token == PLUS_TOKEN;}
 bool is_multiply_token()         { return token == MULTIPLY_TOKEN;}
 bool is_open_parenthesis_token() { return token == L_PARENTHESIS_TOKEN;}
 bool is_close_parenthesis_token() { return token == R_PARENTHESIS_TOKEN;}
+bool is_curly_open_token()       { return token == L_CURLY_TOKEN;}
+bool is_curly_close_token()      { return token == R_CURLY_TOKEN;}
 bool is_extension_token()        { return token == EXTENSION_TOKEN;}
 bool is_lin_combi_token()        { return token == PERCENT_TOKEN;}
 bool following_token_is_EOF()    { return next_token() == END_OF_FILE_TOKEN;}
@@ -192,6 +196,11 @@ bool is_delete_token() {
   return 1;
 }
 /*------------------------------------------------------------------------*/
+bool is_potential_pattern_token() {
+  if (!buffer) return 0;
+  if (buffer[0] != 'n' && buffer[0] != 'a') return 0;
+  return 1;
+}
 
 static bool is_separator_token() {
   if (token == COMMA_TOKEN) return 1;
@@ -247,6 +256,8 @@ Token next_token() {
     if (ch == '=') return new_token(EXTENSION_TOKEN);
     if (ch == '(') return new_token(L_PARENTHESIS_TOKEN);
     if (ch == ')') return new_token(R_PARENTHESIS_TOKEN);
+    if (ch == '{') return new_token(L_CURLY_TOKEN);
+    if (ch == '}') return new_token(R_CURLY_TOKEN);
     if (isprint(ch)) parse_error("invalid character");
     else
       parse_error("invalid character code 0x%02x", ch);
@@ -275,13 +286,19 @@ void parse_error(const char * msg, ...) {
 }
 
 /*------------------------------------------------------------------------*/
+std::string parse_word() {
+  std::string word(buffer);
+  return word;
+}
+
+/*------------------------------------------------------------------------*/
 
 /**
     parses a variable, a new variable is only allocated if new_var_allowed = 1
 
     @param new_var_allowed bool
 */
-static const Var * parse_variable(bool new_var_allowed) {
+const Var * parse_variable(bool new_var_allowed) {
   assert(is_valid_variable_name(buffer));
   const Var * res = new_variable(buffer, new_var_allowed);
   next_token();
@@ -366,14 +383,15 @@ Polynomial * parse_polynomial(bool new_var_allowed) {
 
 /*------------------------------------------------------------------------*/
 
-unsigned parse_index() {
+size_t parse_index() {
+  
   if (token != NUMBER_TOKEN)
     parse_error("error in line %" PRIu64, "no index detected(try '-h')",
       lineno_at_start_of_last_token);
 
   char * ptr;
 
-  unsigned index = strtol(buffer, &ptr, 10);
+  size_t index = strtol(buffer, &ptr, 10);
 
   return index;
 }
