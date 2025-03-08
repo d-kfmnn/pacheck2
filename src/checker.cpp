@@ -87,35 +87,7 @@ static void polynomial_not_found(
 }
 
 /*------------------------------------------------------------------------*/
-/**
-    Prints an error message that polynomials 'actual' and 'expected' do not match
 
-    @param index unsigned
-    @param actual const Polynomial *
-    @param expected const Polynomial *
-    @param rule_line unsigned
-    @param polynomial_line unsigned
-*/
-static void polynomials_do_not_match(
-    unsigned index, const Polynomial *actual, const Polynomial *expected,
-    unsigned rule_line, unsigned polynomial_line) {
-  fflush(stdout);
-  fprintf(stderr, "*** 'pacheck' error in rule with index %i ", index);
-
-  fprintf(stderr,
-          " in '%s' line %i: conclusion polynomial", parse_file_name, rule_line);
-
-  if (rule_line != polynomial_line)
-    fprintf(stderr, " line %i", polynomial_line);
-
-  fputs(":\n", stderr);
-  actual->print(stderr);
-  fputs("\ndoes not match expected result:\n", stderr);
-  expected->print(stderr);
-  fputc('\n', stderr);
-  fflush(stderr);
-  exit(1);
-}
 
 /***************************************************************************/
 /**

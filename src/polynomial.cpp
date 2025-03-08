@@ -277,7 +277,8 @@ bool equal_polynomials(const Polynomial * p1, const Polynomial * p2) {
 /*------------------------------------------------------------------------*/
 
 Polynomial * add_poly(const Polynomial * p1, const Polynomial * p2) {
-
+  if(!p1) return p2->copy();
+  if(!p2) return p1->copy();
   if(p1->is_constant_zero_poly() && p2->is_constant_zero_poly()) return zero_poly();
   if(p1->is_constant_zero_poly()) return p2->copy();
   if(p2->is_constant_zero_poly()) return p1->copy();
