@@ -198,8 +198,10 @@ bool is_delete_token() {
 /*------------------------------------------------------------------------*/
 bool is_potential_pattern_token() {
   if (!buffer) return 0;
-  if (buffer[0] != 'n' && buffer[0] != 'a') return 0;
-  return 1;
+  std::string word(buffer);
+
+  if (word.substr(0, 7) != "pattern") return false;
+  return true;
 }
 
 static bool is_separator_token() {
@@ -391,7 +393,7 @@ size_t parse_index() {
 
   char * ptr;
 
-  size_t index = strtol(buffer, &ptr, 10);
+  size_t index = strtoul(buffer, &ptr, 10);
 
   return index;
 }

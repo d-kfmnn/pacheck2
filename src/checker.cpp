@@ -16,6 +16,8 @@ bool delete_mode = 1;
 bool target_polynomial_inferences = 0;
 bool constant_one_polynomial_inferences = 0;
 
+
+
 /*------------------------------------------------------------------------*/
 // Local variables
 
@@ -416,7 +418,7 @@ void checker_statistics() {
   print_statistics(original_inferences, extension_inferences,
                    lin_comb_inferences, deletion_inferences, num_inference_rules,
                    addition_operations,
-                   multiplication_operations);
+                   multiplication_operations, new_patterns_count, apply_patterns_count);
 }
 /*------------------------------------------------------------------------*/
 

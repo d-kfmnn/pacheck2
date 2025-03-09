@@ -23,6 +23,7 @@ extern bool target_polynomial_inferences;
 /// determines whether proof leads to a refutation
 extern bool constant_one_polynomial_inferences;
 
+
 /*------------------------------------------------------------------------*/
 /**
     Reads the axiom from polys_file_name and checks the proof contained in

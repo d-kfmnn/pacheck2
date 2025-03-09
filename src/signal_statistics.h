@@ -39,6 +39,7 @@ extern unsigned max_inferences;
 extern unsigned searched_inferences;
 /// counts the number of collisions
 extern unsigned collisions_inferences;
+
 /*------------------------------------------------------------------------*/
 /**
     Initialize all signals
@@ -86,6 +87,8 @@ void print_statistics(unsigned original_inferences,
   unsigned deletion_inferences,
   unsigned num_inference_rules,
   unsigned addition_operations,
-  unsigned multiplication_operations);
+  unsigned multiplication_operations,
+  unsigned new_patterns_count,
+  unsigned apply_patterns_count);
 
 #endif  // PACHECK2_SRC_SIGNAL_STATISTICS_H_

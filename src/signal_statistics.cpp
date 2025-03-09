@@ -110,7 +110,7 @@ void die(const char *fmt, ...) {
 /*------------------------------------------------------------------------*/
 
 static double percent(unsigned a, unsigned b) { return b ? 100.0*a/b : 0; }
-static double average(unsigned a, unsigned b) { return b ? a/b : 0; }
+static float average(unsigned a, unsigned b) { return b ? static_cast<float>(a)/b : 0; }
 
 /*------------------------------------------------------------------------*/
 void update_statistics_for_newly_added_polynomial(int degree, int size) {
@@ -126,14 +126,18 @@ void print_statistics(unsigned original_inferences,
   unsigned deletion_inferences,
   unsigned num_inference_rules,
   unsigned addition_operations,
-  unsigned multiplication_operations) {
+  unsigned multiplication_operations,
+  unsigned new_patterns_count,
+  unsigned apply_patterns_count) {
   msg("");
   msg("proof length: %22i (total number of polynomials)", length_proof);
   msg("proof size:   %22i (total number of monomials)",  size_proof);
   msg("proof degree: %22i ", degree_proof);
   msg("");
-
-
+  msg("");
+  msg("patterns: %26u", new_patterns_count);
+  msg("apply patterns: %20i (average: %.1f apply per pattern)", apply_patterns_count, average(apply_patterns_count,new_patterns_count));
+  msg("");
   msg("total inferences: %18" PRIu64, max_inferences);
   msg("original inferences: %15" PRIu64 " (%.0f%% of total rules)",
     original_inferences, percent(original_inferences, max_inferences));
