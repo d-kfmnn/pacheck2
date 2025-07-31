@@ -1,430 +1,233 @@
-/*------------------------------------------------------------------------*/
-/*! \file polynomial.cpp
-    \brief contains arithmetic operations for polynomials
-
-  Part of Pacheck 2.0 : PAC proof checker.
-  Copyright(C) 2020 Daniela Kaufmann, Johannes Kepler University Linz
-*/
-/*------------------------------------------------------------------------*/
-#include <algorithm>
-#include "polynomial.h"
-/*------------------------------------------------------------------------*/
-
-Polynomial::Polynomial(Monomial * m, Polynomial * p):
-  mon(m), rest(p) {
-    if(m && !p) siz = 1;
-    else if (m && p) siz = p->siz+1;
-  }
+#include "polynomial.hpp"
+#include <cmath>
 
 
-unsigned Polynomial::size() const {
-  return siz;
+std::unordered_map<std::string, int> current_substitution;
+
+int mod(int x) {
+    if (mod_value <= 0) return x; // no mod set
+    int r = x % mod_value;
+    return r < 0 ? r + mod_value : r;
 }
-
-
-unsigned Polynomial::min_term_size() const {
-    unsigned len = INT_MAX;
-    const Polynomial * res = this;
-
-    while(res){
-      Monomial * m = res->get_lm();
-      unsigned tlen = 0;
-      if (m->get_term()) tlen = m->get_term_size();
-      if (tlen < len) len = tlen;
-      res = res->rest;
+//------------------------------------------------------------------------
+Polynomial makePolynomial(int coeff, const Monomial& mono) {
+    Polynomial p;
+    if (mod(coeff) != 0) {
+        p[mono] = mod(coeff);
     }
-    return len;
+    return p;
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
+Polynomial addPolynomials(const Polynomial& a, const Polynomial& b) {
+    Polynomial result = a;
 
-unsigned Polynomial::degree() const {
-    unsigned len = 0;
-    const Polynomial * res = this;
+    for (const auto& [mono, coeff] : b) {
+        result[mono] += coeff;
+        result[mono] = mod(result[mono]);
 
-    while(res){
-      Monomial * m = res->get_lm();
-      unsigned tlen = 0;
-      if (m && m->get_term()) tlen = m->get_term_size();
-      if (tlen > len) len = tlen;
-      res = res->rest;
-    }
-    return len;
-}
-
-/*------------------------------------------------------------------------*/
-
-bool Polynomial::is_constant_zero_poly() const {
-  const Polynomial * res = this;
-  if(!res) return 1;
-  if(!res->get_lm() && !res->get_rest()) return 1;
-  return 0;
-}
-
-/*------------------------------------------------------------------------*/
-
-bool Polynomial::is_constant_one_poly() const {
-  const Polynomial * res = this;
-
-  if (res->size() != 1) return 0;
-
-  Monomial * m = res->get_lm();
-  if (m->get_term()) return 0;
-  if (mpz_cmp_si(m->coeff, 1) != 0) return 0;
-
-  return 1;
-}
-
-/*------------------------------------------------------------------------*/
-
-Polynomial * Polynomial::copy() const {
-  const Polynomial * res = this;
-  if(res->is_constant_zero_poly()) return zero_poly();
-  while(res){
-    push_mstack(res->get_lm()->copy());
-    res = res->get_rest();
-  }
-  Polynomial * out = build_poly(0);
-  return out;
-}
-
-/*------------------------------------------------------------------------*/
-
-void Polynomial::print(FILE * file, bool end) const {
-  const Polynomial * res = this;
-
-  if (!res) {fputc ('0', file);
-  } else if(!res->rest) {
-    Monomial * m = res->get_lm();
-    if(m) m->print(file, 1);
-    else fputc ('0', file);
-  } else {
-    Monomial * m = res->get_lm();
-    if(m) m->print(file, 1);
-
-    for (Polynomial * q = res->rest; q; q = q->rest) {
-      if(q->get_lm()) q->get_lm()->print(file, 0);
-    }
-  }
-  if (end) fputs(";\n", file);
-}
-
-
-/*------------------------------------------------------------------------*/
-
-Polynomial::~Polynomial() {
-  Polynomial * res = this;
-  Polynomial * rest = res->get_rest();
-  deallocate_monomial(res->get_lm());
-  delete(rest);
-}
-
-
-/*------------------------------------------------------------------------*/
-
-// Local variables
-static size_t size_mstack;  ///< size of mstack
-static size_t num_mstack = 0;  ///< number of elements in mstack
-static Monomial ** mstack;  ///< Monomial** used for building poly
-/*------------------------------------------------------------------------*/
-/**
-    Enlarges the allocated size of mstack
-*/
-static void enlarge_mstack() {
-  size_t new_size_mstack = size_mstack ? 2*size_mstack : 1;
-
-  Monomial** newArr = new Monomial*[new_size_mstack];
-  memcpy( newArr, mstack, size_mstack * sizeof(Monomial*));
-  delete [] mstack;
-  mstack = newArr;
-  size_mstack = new_size_mstack;
-}
-
-/*------------------------------------------------------------------------*/
-/**
-    Sets the number of elements in the stack to 0
-*/
-static void clear_mstack() { num_mstack = 0; }
-
-/*------------------------------------------------------------------------*/
-
-void deallocate_mstack() { delete[](mstack); }
-
-/*------------------------------------------------------------------------*/
-
-/**
-    Pushes a monomial to the end of the stack
-
-    @param t monomial to be added to the mstack
-*/
-void push_mstack(Monomial *m) {
-  if (size_mstack == num_mstack) enlarge_mstack();
-
-  assert(m);
-  if (mpz_sgn(m->coeff) == 0) {
-    deallocate_monomial(m);
-    return;
-  }
-
-  mstack[num_mstack++] = m;
-}
-
-/*------------------------------------------------------------------------*/
-static int cmp_monomials_for_qsort (const void * p, const void * q) {
-  Monomial * a = *(Monomial **) p;
-  Monomial * b = *(Monomial **) q;
-  if(a->get_term() && b->get_term()) return -1*(a->get_term()->cmp(b->get_term()));
-  else if (a->get_term()) return -1;
-  else return 1;
-}
-
-/*------------------------------------------------------------------------*/
-
-static void sort_monomials () {
-  qsort (mstack, num_mstack, sizeof *mstack, cmp_monomials_for_qsort);
-}
-
-/*------------------------------------------------------------------------*/
-
-static void merge_monomials () {
-  Monomial * a = 0;
-  size_t i = 0;
-
-  mpz_t tmp_gmp;
-  mpz_init(tmp_gmp);
-
-  for (size_t j = 0; j < num_mstack; j++) {
-    Monomial * b = mstack[j];
-    if (mpz_sgn(b->coeff) == 0) {
-      deallocate_monomial(b);
-      i--;
-    } else if (a && a->get_term() == b->get_term()) {
-      mpz_add(tmp_gmp, a->coeff, b->coeff);
-      deallocate_monomial(b);
-      if (mpz_sgn(tmp_gmp) != 0) {
-        Monomial * c = new Monomial(tmp_gmp, a->get_term()->copy());
-        deallocate_monomial(a);
-        mstack[i-1] = c;
-        a = c;
-      } else {
-        deallocate_monomial(a);
-        i--;
-        if (i > 0) a = mstack[i-1];
-        else
-          a = 0;
-      }
-    } else {
-      mstack[i++] = b;
-      a = b;
-    }
-  }
-
-  mpz_clear(tmp_gmp);
-  num_mstack = i;
-}
-
-
-/*------------------------------------------------------------------------*/
-
-Polynomial * build_poly(bool need_sorting) {
-  if (need_sorting) {
-    sort_monomials();
-    merge_monomials();
-  }
-  Polynomial * res = 0;
-  int i = num_mstack;
-  if(!i) res = new Polynomial(0, 0);
-  while (i > 0) {
-    res = new Polynomial(mstack[--i], res);
-  }
-
-
-  clear_mstack();
-  return res;
-}
-
-
-/*------------------------------------------------------------------------*/
-
-bool equal_polynomials(const Polynomial * p1, const Polynomial * p2) {
-  assert(p1);
-  assert(p2);
-  if (p1->is_constant_zero_poly() && p2->is_constant_zero_poly()) return 1;
-
-  const Polynomial * tmp1 = p1;
-  const Polynomial * tmp2 = p2;
-
-  Monomial * m1, * m2;
-
-  while (tmp1 && tmp2) {
-    m1 = tmp1->get_lm();
-    m2 = tmp2->get_lm();
-    if (m1 == m2) return 1;
-    if (!m1) return 0;
-    if (!m2) return 0;
-    if (m1->get_term() != m2->get_term()) return 0;
-    if (mpz_cmp(m1->coeff, m2->coeff) != 0) return 0;
-
-    tmp1 = tmp1->get_rest();
-    tmp2 = tmp2->get_rest();
-
-  }
-
-  if (tmp1 || tmp2 ) return 0;
-  return 1;
-}
-
-/*------------------------------------------------------------------------*/
-
-Polynomial * add_poly(const Polynomial * p1, const Polynomial * p2) {
-  if(!p1) return p2->copy();
-  if(!p2) return p1->copy();
-  if(p1->is_constant_zero_poly() && p2->is_constant_zero_poly()) return zero_poly();
-  if(p1->is_constant_zero_poly()) return p2->copy();
-  if(p2->is_constant_zero_poly()) return p1->copy();
-
-  assert(p1);
-  assert(p2);
-
-  mpz_t tmp_gmp;
-  mpz_init(tmp_gmp);
-
-  const Polynomial * tmp1 = p1;
-  const Polynomial * tmp2 = p2;
-  Monomial * m1, *m2;
-
-  while (tmp1 && tmp2) {
-    m1 = tmp1->get_lm();
-    m2 = tmp2->get_lm();
-
-    if (!m1->get_term() || !m2->get_term()) {
-      if (!m1->get_term() && !m2->get_term()) {
-        mpz_add(tmp_gmp, m1->coeff, m2->coeff);
-        if (mpz_sgn(tmp_gmp) != 0) {
-          Monomial * m = new Monomial(tmp_gmp, 0);
-          push_mstack(m);
+        // Remove zero terms
+        if (result[mono] == 0) {
+            result.erase(mono);
         }
-        tmp1 = tmp1->get_rest();
-        tmp2 = tmp2->get_rest();
+    }
 
+    return result;
+}
 
-      } else if (!m1->get_term()) {
-        push_mstack(m2->copy());
-        tmp2 = tmp2->get_rest();
-      } else {
-        push_mstack(m1->copy());
-        tmp1 = tmp1->get_rest();
-      }
-    } else {
-      if (m1->get_term() == m2->get_term()) {
-        mpz_add(tmp_gmp, m1->coeff, m2->coeff);
-        if (mpz_sgn(tmp_gmp) != 0) {
-          Monomial * m = new Monomial(tmp_gmp, m1->get_term_copy());
-          push_mstack(m);
+//------------------------------------------------------------------------
+Polynomial multiplyPolynomialByConstant(const Polynomial& poly, int c) {
+    Polynomial result;
+    for (const auto& [mono, coeff] : poly) {
+        int new_coeff = mod(coeff * c);
+        if (new_coeff != 0) {
+            result[mono] = new_coeff;
         }
-        tmp1 = tmp1->get_rest();
-        tmp2 = tmp2->get_rest();
-      } else {
-        if (m1->get_term()->cmp(m2->get_term()) > 0) {
-          push_mstack(m1->copy());
-          tmp1 = tmp1->get_rest();
+    }
+    return result;
+}
+//------------------------------------------------------------------------
+Polynomial multiplyPolynomials(const Polynomial& a, const Polynomial& b) {
+    Polynomial result;
+
+    for (const auto& [ma, ca] : a) {
+        for (const auto& [mb, cb] : b) {
+            Monomial m;
+            // Combine exponents
+            m = ma;
+            for (const auto& [var, exp] : mb) {
+                m[var] += exp;
+            }
+
+            int coeff = mod(ca * cb);
+            if (coeff != 0) {
+                result[m] += coeff;
+                result[m] = mod(result[m]);
+                if (result[m] == 0) result.erase(m);
+            }
+        }
+    }
+
+    return result;
+}
+
+//------------------------------------------------------------------------
+Polynomial substitute(const Polynomial& poly, const std::unordered_map<std::string, int>& subs) {
+    Polynomial result;
+
+    for (const auto& [monomial, coeff] : poly) {
+        int numeric_factor = coeff;
+        Monomial new_monomial;
+
+        for (const auto& [var, exp] : monomial) {
+            auto it = subs.find(var);
+            if (it != subs.end()) {
+                // Variable is substituted: multiply numeric_factor by (value^exp)
+                numeric_factor *= static_cast<int>(std::pow(it->second, exp));
+                numeric_factor = mod(numeric_factor);
+            } else {
+                // Variable not substituted: keep in monomial
+                new_monomial[var] = exp;
+            }
+        }
+
+        // Add to result
+        if (numeric_factor != 0) {
+            // Combine like terms:
+            result[new_monomial] += numeric_factor;
+            result[new_monomial] = mod(result[new_monomial]);
+        }
+    }
+
+    // Remove zero coeff monomials if needed
+    for (auto it = result.begin(); it != result.end(); ) {
+        if (it->second == 0) it = result.erase(it);
+        else ++it;
+    }
+
+    return result;
+}
+//------------------------------------------------------------------------
+bool polynomialsEqual(const Polynomial& a, const Polynomial& b) {
+    if (a == b) return true;
+
+    Polynomial a_sub = substitute(a, current_substitution);
+    Polynomial b_sub = substitute(b, current_substitution);
+    if (a_sub == b_sub) return true;
+
+
+    // If they are not equal, print the polynomials for debugging
+
+    std::cerr << "Polynomials do not match:\n";
+    std::cerr << "Expected (RHS): ";
+    printPolynomial(b_sub);
+    std::cerr << "\nComputed (LHS): ";
+    printPolynomial(a_sub);
+    std::cerr << "\n\n";
+
+    return false;
+}
+
+//------------------------------------------------------------------------
+bool polynomialsOne(const Polynomial& a) {
+    Polynomial b = makePolynomial(1);
+    if (a == b) return true;
+
+    Polynomial a_sub = substitute(a, current_substitution);
+    if (a_sub == b) return true;
+
+
+    return false;
+}
+
+//------------------------------------------------------------------------
+bool isUnivariateIn(const Polynomial& p, const std::string& var) {
+    for (const auto& [mono, coeff] : p) {
+        for (const auto& [v, _] : mono) {
+            if (v != var)
+                return false;
+        }
+    }
+    return true;
+}
+//------------------------------------------------------------------------
+int evaluateAt(const Polynomial& p, const std::string& var, int value) {
+    int result = 0;
+    for (const auto& [mono, coeff] : p) {
+        int term = coeff;
+        for (const auto& [v, exp] : mono) {
+            if (v != var)
+                return -1; // multivariate, should not happen if univariate check passed
+            int pow_val = 1;
+            for (int i = 0; i < exp; ++i)
+                pow_val = mod(pow_val * value);
+            term = mod(term * pow_val);
+        }
+        result = mod(result + term);
+    }
+    return result;
+}
+//------------------------------------------------------------------------
+
+void printPolynomial(const Polynomial& p) {
+    if (p.empty()) {
+        std::cout << "0";
+        return;
+    }
+
+    bool first = true;
+    for (const auto& [mono, coeff] : p) {
+        int c = mod(coeff);
+        if (c == 0) continue;
+
+        // Sign
+        if (!first) {
+            if (c > 0) std::cout << " + ";
+            else std::cout << " - ";
         } else {
-          push_mstack(m2->copy());
-          tmp2 = tmp2->get_rest();
+            if (c < 0) std::cout << "-";
         }
-      }
+
+        int abs_c = std::abs(c);
+        bool need_coeff = (abs_c != 1 || mono.empty());
+
+        if (need_coeff) std::cout << abs_c;
+
+        for (const auto& [var, exp] : mono) {
+            if (!need_coeff) {
+                // if no coeff, don't add `*`
+                std::cout << var;
+            } else {
+                std::cout << "*" << var;
+            }
+
+            if (exp != 1) {
+                std::cout << "^" << exp;
+            }
+
+            need_coeff = true; // All further variables must be prefixed with '*'
+        }
+
+        first = false;
     }
-  }
-
-  mpz_clear(tmp_gmp);
-
-  while (tmp1) {
-    m1 = tmp1->get_lm();
-    push_mstack(m1->copy());
-    tmp1 = tmp1->get_rest();
-
-  }
-  while (tmp2) {
-    m2 = tmp2->get_lm();
-    push_mstack(m2->copy());
-    tmp2 = tmp2->get_rest();
-
-  }
-
-  Polynomial * p = build_poly(0);
-  return p;
 }
+//------------------------------------------------------------------------
 
 
-/*------------------------------------------------------------------------*/
-
-Polynomial * multiply_poly(const Polynomial * p1, const Polynomial * p2) {
-
-  if(p1->is_constant_zero_poly() || p2->is_constant_zero_poly()) return zero_poly();
-
-  Term * t;
-  const Polynomial * tmp1 = p1;
-  const Polynomial * tmp2 = p2;
-  const Monomial *m1, *m2;
-
-  mpz_t tmp_gmp;
-  mpz_init(tmp_gmp);
-
-  while (tmp1) {
-    m1 = tmp1->get_lm();
-    tmp2 = p2;
-    while (tmp2) {
-      m2 = tmp2->get_lm();
-      mpz_mul(tmp_gmp, m1->coeff, m2->coeff);
-
-      if (m1->get_term() && m2->get_term())
-        t = multiply_term(m1->get_term(), m2->get_term());
-      else if (m2->get_term()) t = m2->get_term_copy();
-      else if (m1->get_term()) t = m1->get_term_copy();
-      else
-        t = 0;
-      push_mstack(new Monomial(tmp_gmp, t));
-      tmp2 = tmp2->get_rest();
+std::unordered_set<std::string> getVariables(const Polynomial& poly) {
+    std::unordered_set<std::string> vars;
+    for (const auto& [mono, coeff] : poly) {
+        for (const auto& [var, exp] : mono) {
+            vars.insert(var);
+        }
     }
-    tmp1 = tmp1->get_rest();
-  }
-
-  mpz_clear(tmp_gmp);
-
-  Polynomial * p = build_poly(1);
-  return p;
+    return vars;
+}
+//------------------------------------------------------------------------
+bool isSubset(const std::unordered_set<std::string>& small, const std::unordered_set<std::string>& large) {
+    for (const auto& v : small) {
+        if (!large.count(v)) return false;
+    }
+    return true;
 }
 
-/*------------------------------------------------------------------------*/
-
-Polynomial * negate_poly(const Polynomial *p1) {
-
-  if(p1->is_constant_zero_poly()) return zero_poly();
-
-  mpz_t tmp_gmp;
-  mpz_init(tmp_gmp);
-
-  const Polynomial * tmp1 = p1;
-
-  while(tmp1){
-    Monomial * m = tmp1->get_lm();
-    mpz_neg(tmp_gmp, m->coeff);
-    if (m->get_term())
-      push_mstack(new Monomial(tmp_gmp, m->get_term_copy()));
-    else
-      push_mstack(new Monomial(tmp_gmp, 0));
-
-    tmp1 = tmp1->get_rest();
-  }
-
-  mpz_clear(tmp_gmp);
-  Polynomial * tmp = build_poly(0);
-  return tmp;
-}
-
-Polynomial * zero_poly() {
-  Polynomial * res = new Polynomial(0, 0);
-  return res;
-}
-
-/*------------------------------------------------------------------------*/

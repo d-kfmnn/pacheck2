@@ -39,7 +39,7 @@ elif [ $check = undefined ]
 then
   check=no
 fi
-CFLAGS="-Wall -Wextra -std=c++11"
+CFLAGS="-Wall -Wextra -std=c++20"
 if [ $debug = yes ]
 then
   CFLAGS="$CFLAGS -g3"

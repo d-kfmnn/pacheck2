@@ -2,398 +2,346 @@
 /*! \file parser.cpp
     \brief core functions for parsing
 
-  Part of Pacheck 2.0 : PAC proof checker.
-  Copyright(C) 2020 Daniela Kaufmann, Johannes Kepler University Linz
+  Part of Pacheck 3.0 : PAC proof checker.
 */
 /*------------------------------------------------------------------------*/
 #include "parser.h"
+
+#include <iostream>
+#include <regex>
+#include <string>
+#include <unordered_set>
 /*------------------------------------------------------------------------*/
-// Global var
-const char * parse_file_name;
-FILE * parse_file;
-unsigned lineno;
-unsigned charno;
-unsigned lineno_at_start_of_last_token;
-/*------------------------------------------------------------------------*/
-/**
-    Determines whether char is either character, number of '_'
-
-    @param ch char
-
-    @return bool
-
-*/
-static bool is_valid_variable_letter(char ch) {
-  if (ch == '_') return 1;
-  if ('0' <= ch && ch <= '9') return 1;
-  if ('a' <= ch && ch <= 'z') return 1;
-  if ('A' <= ch && ch <= 'Z') return 1;
-  return 0;
-}
-
-/*------------------------------------------------------------------------*/
-/**
-    Determines whether char is a character
-
-    @param ch char
-
-    @return bool
-
-*/
-static bool is_valid_variable_first_letter(char ch) {
-  if ('a' <= ch && ch <= 'z') return 1;
-  if ('A' <= ch && ch <= 'Z') return 1;
-  return 0;
-}
-
-/*------------------------------------------------------------------------*/
-#ifndef NDEBUG
-/**
-    Determines whether name is a valid variable name
-
-    @param name const char *
-
-    @return bool
-
-*/
-static bool is_valid_variable_name(const char * name) {
-  if (!name) return 0;
-  if (!is_valid_variable_first_letter(name[0])) return 0;
-  for (const char * p = name + 1; *p; p++)
-    if (!is_valid_variable_letter(*p)) return 0;
-  return 1;
-}
-
-#endif
-/*------------------------------------------------------------------------*/
-/// size of the buffer
-static size_t size_buffer;
-/// number of elements in the buffer
-static size_t num_buffer;
-/// buffer to store char
-static char * buffer;
+std::unordered_map<int, Polynomial> id_to_poly;
+std::unordered_set<std::string> allowed_variables;
+std::vector<std::pair<std::string, int>> substitution_stack;
+std::unordered_map<std::string, std::unordered_set<int>> declared_roots;
 
 /*------------------------------------------------------------------------*/
 
-/**
-    Enlarges the allocated buffer
-*/
-static void enlarge_buffer() {
-  size_t new_size_buffer = size_buffer ? 2*size_buffer : 1;
-  buffer = reinterpret_cast<char*> (realloc(buffer, new_size_buffer));
-  size_buffer = new_size_buffer;
-}
-
 /*------------------------------------------------------------------------*/
-/**
-    Pushes a character to the buffer
+int mod_value = -1;
+bool mod_set = false;
 
-    @param ch char
-*/
-static void push_buffer(char ch) {
-  if (size_buffer == num_buffer) enlarge_buffer();
-  buffer[num_buffer++] = ch;
-}
+std::vector<Token> tokenize(const std::string& input) {
+  std::vector<Token> tokens;
+  std::string buffer;
+  for (size_t i = 0; i < input.size(); ++i) {
+    char ch = input[i];
 
-/*------------------------------------------------------------------------*/
-/**
-   Clears the buffer, i.e. sets the number to 0
-*/
-static void clear_buffer() { num_buffer = 0; }
+    if (isspace(ch)) continue;
 
-/*------------------------------------------------------------------------*/
-
-void deallocate_buffer() { free(buffer); }
-
-/*------------------------------------------------------------------------*/
-/// currently saved char
-static int saved_char;
-/// determines whether we currently saved a char
-static bool char_saved;
-/*------------------------------------------------------------------------*/
-/**
-    stores the next character
-
-    @return int
-*/
-static int next_char() {
-  int res;
-  if (char_saved) {
-    res = saved_char;
-    char_saved = 0;
-  } else {
-    #ifdef HAVEUNLOCKEDIO
-        res = getc_unlocked(parse_file);
-    #else
-        res = getc(parse_file);
-    #endif
-  }
-  if (res == '\n') lineno++;
-  if (res != EOF) charno++;
-  return res;
-}
-
-/*------------------------------------------------------------------------*/
-/**
-    In case we need to undo reading a character, we store the current character
-
-    @param ch int
-*/
-static void prev_char(int ch) {
-  assert(!char_saved);
-  if (ch == '\n') {
-    assert(lineno > 0);
-    lineno--;
-  } else if (ch != EOF) {
-    assert(charno > 0);
-    charno--;
-  }
-  saved_char = ch;
-  char_saved = 1;
-}
-
-/*------------------------------------------------------------------------*/
-
-/// We use Token to identify components in the proof
-typedef const char * Token;
-
-/// Token, used to store the components in the proof
-static Token token;
-
-static Token END_OF_FILE_TOKEN = "end-of-file";
-static Token MINUS_TOKEN       = "minus operator";
-static Token PERCENT_TOKEN     = "linear combination operator";
-static Token PLUS_TOKEN        = "addition operator";
-static Token MULTIPLY_TOKEN    = "multiplication operator";
-static Token COMMA_TOKEN       = "comma separator";
-static Token SEMICOLON_TOKEN   = "semicolon separator";
-static Token NUMBER_TOKEN      = "number";
-static Token VARIABLE_TOKEN    = "variable";
-static Token EXTENSION_TOKEN   = "equal";
-static Token L_PARENTHESIS_TOKEN   = "open parenthesis";
-static Token R_PARENTHESIS_TOKEN   = "close parenthesis";
-static Token L_CURLY_TOKEN     = "open curly brace";
-static Token R_CURLY_TOKEN     = "close curly brace";
-/*------------------------------------------------------------------------*/
-
-bool is_semicolon_token()        { return token == SEMICOLON_TOKEN;}
-bool is_comma_token()            { return token == COMMA_TOKEN;}
-bool is_plus_token()             { return token == PLUS_TOKEN;}
-bool is_multiply_token()         { return token == MULTIPLY_TOKEN;}
-bool is_open_parenthesis_token() { return token == L_PARENTHESIS_TOKEN;}
-bool is_close_parenthesis_token() { return token == R_PARENTHESIS_TOKEN;}
-bool is_curly_open_token()       { return token == L_CURLY_TOKEN;}
-bool is_curly_close_token()      { return token == R_CURLY_TOKEN;}
-bool is_extension_token()        { return token == EXTENSION_TOKEN;}
-bool is_lin_combi_token()        { return token == PERCENT_TOKEN;}
-bool following_token_is_EOF()    { return next_token() == END_OF_FILE_TOKEN;}
-
-/*------------------------------------------------------------------------*/
-bool is_delete_token() {
-  if (!buffer) return 0;
-  if (buffer[0] != 'd') return 0;
-  if (buffer[1]) return 0;
-  return 1;
-}
-/*------------------------------------------------------------------------*/
-bool is_potential_pattern_token() {
-  if (!buffer) return 0;
-  std::string word(buffer);
-
-  if (word.substr(0, 7) != "pattern") return false;
-  return true;
-}
-
-static bool is_separator_token() {
-  if (token == COMMA_TOKEN) return 1;
-  if (token == SEMICOLON_TOKEN) return 1;
-  if (token == R_PARENTHESIS_TOKEN) return 1;
-  return 0;
-}
-
-/*------------------------------------------------------------------------*/
-Token get_token() { return token; }
-/*------------------------------------------------------------------------*/
-/**
-    stores a new token
-
-    @param t token
-*/
-static Token new_token(Token t) {
-  push_buffer(0);
-  token = t;
-  return token;
-}
-
-/*------------------------------------------------------------------------*/
-
-Token next_token() {
-  clear_buffer();
-  for (;;) {
-    int ch = next_char();
-    if (ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n')
-      continue;
-    lineno_at_start_of_last_token = lineno;
-    if (ch == EOF) return new_token(END_OF_FILE_TOKEN);
-    push_buffer(ch);
-
-    if ('0' <= ch && ch <= '9') {
-      while ('0' <=(ch = next_char()) && ch <= '9')
-        push_buffer(ch);
-      prev_char(ch);
-      return new_token(NUMBER_TOKEN);
+    if (isdigit(ch)) {
+      buffer = ch;
+      while (i + 1 < input.size() && isdigit(input[i + 1])) {
+        buffer += input[++i];
+      }
+      tokens.push_back({TokenType::Number, buffer});
+    } else if (isalpha(ch) || ch == 'l') {
+      buffer = ch;
+      while (i + 1 < input.size() && (isalnum(input[i + 1]) || input[i + 1] == '_')) {
+        buffer += input[++i];
+      }
+      tokens.push_back({TokenType::Identifier, buffer});
+    } else if (ch == '+' || ch == '-' || ch == '*' || ch == '^' || ch == '(' || ch == ')') {
+      tokens.push_back({TokenType::Operator, std::string(1, ch)});
+    } else {
+      std::cerr << "Unexpected character in input: " << ch << "\n";
+      exit(1);
     }
-    if (is_valid_variable_first_letter(ch)) {
-      while (is_valid_variable_letter(ch = next_char()))
-        push_buffer(ch);
-      prev_char(ch);
-      return new_token(VARIABLE_TOKEN);
-    }
-    if (ch == '-') return new_token(MINUS_TOKEN);
-    if (ch == '+') return new_token(PLUS_TOKEN);
-    if (ch == '*') return new_token(MULTIPLY_TOKEN);
-    if (ch == '%') return new_token(PERCENT_TOKEN);
-    if (ch == ',') return new_token(COMMA_TOKEN);
-    if (ch == ';') return new_token(SEMICOLON_TOKEN);
-    if (ch == '=') return new_token(EXTENSION_TOKEN);
-    if (ch == '(') return new_token(L_PARENTHESIS_TOKEN);
-    if (ch == ')') return new_token(R_PARENTHESIS_TOKEN);
-    if (ch == '{') return new_token(L_CURLY_TOKEN);
-    if (ch == '}') return new_token(R_CURLY_TOKEN);
-    if (isprint(ch)) parse_error("invalid character");
-    else
-      parse_error("invalid character code 0x%02x", ch);
   }
+
+  tokens.push_back({TokenType::End, ""});
+  return tokens;
 }
 
-/*------------------------------------------------------------------------*/
+Polynomial parseFactor(std::vector<Token>& tokens, size_t& i) {
+  int sign = 1;
 
-void parse_error(const char * msg, ...) {
-  fflush(stdout);
-  fprintf(stderr,
-    "*** parse error in '%s' line %i",
-    parse_file_name, lineno_at_start_of_last_token);
-  if (buffer[0] && isprint(buffer[0]))
-    fprintf(stderr, " at '%s'", buffer);
-  else if (token == END_OF_FILE_TOKEN)
-    fputs(" at end-of-file", stderr);
-  fputs(": ", stderr);
-  va_list ap;
-  va_start(ap, msg);
-  vfprintf(stderr, msg, ap);
-  va_end(ap);
-  fputc('\n', stderr);
-  fflush(stderr);
+  // Handle unary minus
+  while (tokens[i].type == TokenType::Operator && (tokens[i].value == "-" || tokens[i].value == "+")) {
+    if (tokens[i].value == "-") sign *= -1;
+    ++i;
+  }
+
+  if (tokens[i].type == TokenType::Number) {
+    int coeff = std::stoi(tokens[i++].value);
+
+    if (tokens[i].type == TokenType::Operator && tokens[i].value == "*") {
+      ++i;
+      Polynomial p = parseFactor(tokens, i);
+      return multiplyPolynomialByConstant(p, sign * coeff);
+    } else {
+      return makePolynomial(sign * coeff);
+    }
+  }
+
+  if (tokens[i].type == TokenType::Identifier) {
+    std::string var = tokens[i++].value;
+    int exp = 1;
+
+    if (tokens[i].type == TokenType::Operator && tokens[i].value == "^") {
+      ++i;
+      if (tokens[i].type != TokenType::Number) {
+        std::cerr << "Expected exponent after '^'\n";
+        exit(1);
+      }
+      exp = std::stoi(tokens[i++].value);
+    }
+
+    Monomial mono = {{var, exp}};
+    return makePolynomial(sign, mono);
+  }
+
+  if (tokens[i].type == TokenType::Operator && tokens[i].value == "(") {
+    ++i;  // skip '('
+    Polynomial p = parseExpression(tokens, i);
+    if (tokens[i].value != ")") {
+      std::cerr << "Expected ')' in expression\n";
+      exit(1);
+    }
+    ++i;  // skip ')'
+    return multiplyPolynomialByConstant(p, sign);
+  }
+
+  std::cerr << "Unexpected token in expression\n";
   exit(1);
 }
 
-/*------------------------------------------------------------------------*/
-std::string parse_word() {
-  std::string word(buffer);
-  return word;
-}
+Polynomial parseTerm(std::vector<Token>& tokens, size_t& i) {
+  Polynomial result = parseFactor(tokens, i);
 
-/*------------------------------------------------------------------------*/
-
-/**
-    parses a variable, a new variable is only allocated if new_var_allowed = 1
-
-    @param new_var_allowed bool
-*/
-const Var * parse_variable(bool new_var_allowed) {
-  assert(is_valid_variable_name(buffer));
-  const Var * res = new_variable(buffer, new_var_allowed);
-  next_token();
-  return res;
-}
-
-/*------------------------------------------------------------------------*/
-
-/**
-    parses a term, a new variable is only allocated if new_var_allowedd = 1
-
-    @param new_var_allowed bool
-*/
-static Term * parse_term(bool new_var_allowed) {
-  while (token == VARIABLE_TOKEN) {
-    const Var * variable = parse_variable(new_var_allowed);
-    if (new_var_allowed && !variable) return 0;
-    push_var_list(variable);
-    if (token == MULTIPLY_TOKEN) next_token();
+  while (tokens[i].type == TokenType::Operator && tokens[i].value == "*") {
+    ++i;  // skip '*'
+    Polynomial rhs = parseFactor(tokens, i);
+    result = multiplyPolynomials(result, rhs);
   }
-  Term * res = build_term_from_list();
-  return res;
+
+  return result;
 }
 
-/*------------------------------------------------------------------------*/
+Polynomial parseExpression(std::vector<Token>& tokens, size_t& i) {
+  Polynomial result = parseTerm(tokens, i);
 
-/**
-    parses a monomial, a new variable is only allocated if new_var_allowed = 1
-
-    @param sign int
-    @param new_var_allowed bool
-*/
-static Monomial * parse_monomial(bool sign, bool new_var_allowed) {
-  mpz_t tmp_gmp;
-  mpz_init(tmp_gmp);
-  if (token == NUMBER_TOKEN) {
-    mpz_set_str(tmp_gmp, buffer, 10);
-    next_token();
-  } else if (token == VARIABLE_TOKEN) { mpz_set_ui(tmp_gmp, 1);
-  } else {
-    parse_error("expected monomial");
-  }
-  if (sign) mpz_neg(tmp_gmp, tmp_gmp);
-  if (token == MULTIPLY_TOKEN) next_token();
-  Term * term = parse_term(new_var_allowed);
-
-  Monomial * res = new Monomial(tmp_gmp, term);
-  mpz_clear(tmp_gmp);
-  return res;
-}
-
-/*------------------------------------------------------------------------*/
-
-Polynomial * parse_polynomial(bool new_var_allowed) {
-  next_token();
-  bool sign;
-  if (token == MINUS_TOKEN) {
-    next_token();
-    if (token == NUMBER_TOKEN && buffer[0] == '0')
-      parse_error("unexpected '0' after '-'");
-    sign = 1;
-  } else {
-    sign = 0; }
-  for (;;) {
-    Monomial * monomial = parse_monomial(sign, new_var_allowed);
-    push_mstack(monomial);
-    if (is_separator_token()) break;
-    if (token == MINUS_TOKEN) {
-      sign = 1;
-      next_token();
-    } else if (token == PLUS_TOKEN) {
-      sign = 0;
-      next_token();
+  while (tokens[i].type == TokenType::Operator && (tokens[i].value == "+" || tokens[i].value == "-")) {
+    std::string op = tokens[i++].value;
+    Polynomial rhs = parseTerm(tokens, i);
+    if (op == "+") {
+      result = addPolynomials(result, rhs);
     } else {
-      parse_error("unexpected %s", token);
+      rhs = multiplyPolynomialByConstant(rhs, -1);
+      result = addPolynomials(result, rhs);
     }
   }
 
-  Polynomial * res = build_poly(1);
-  return res;
+  return result;
 }
 
-/*------------------------------------------------------------------------*/
+Polynomial parsePolynomial(const std::string& input) {
+  std::vector<Token> tokens = tokenize(input);
+  size_t index = 0;
+  return parseExpression(tokens, index);
+}
 
-size_t parse_index() {
-  
-  if (token != NUMBER_TOKEN)
-    parse_error("error in line %" PRIu64, "no index detected(try '-h')",
-      lineno_at_start_of_last_token);
+void processLine(std::string line) {
+  // Remove inline comments (starting with //)
+  size_t comment_pos = line.find("//");
+  if (comment_pos != std::string::npos) {
+    line = line.substr(0, comment_pos);
+  }
 
-  char * ptr;
+  // Trim leading and trailing whitespace
+  line = std::regex_replace(line, std::regex("^\\s+|\\s+$"), "");
 
-  size_t index = strtoul(buffer, &ptr, 10);
+  std::smatch match;
+  // Axiom rule: "<id> a <polynomial>;"
+  static std::regex axiom_rule(R"(^\s*(\d+)\s+a\s+(.+?)\s*;?\s*$)");
 
-  return index;
+  // Delete rule: "<id> d;"
+  static std::regex delete_rule(R"(^\s*(\d+)\s+d\s*;?\s*$)");
+
+  // Modulus rule: "m <modulus>;"
+  static std::regex mod_rule(R"(^\s*m\s+(\d+)\s*;?\s*$)");
+
+  // Percent rule: "<id> % <op> , <result>;"
+  static std::regex percent_rule(R"(^\s*(\d+)\s*%\s*(.+?)\s*,\s*(.+?)\s*;?\s*$)");
+
+  // Branch instantiation rule: "b <var> <value>;"
+  static std::regex branch_rule(R"(^\s*b\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+(-?\d+)\s*;?\s*$)");
+
+  // Root declaration rule: "<id> r <var> <roots...>;"
+  static std::regex root_rule(R"(^\s*(\d+)\s*r\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+((?:-?\d+\s*)+)\s*;?\s*$)");
+
+  if (std::regex_match(line, match, mod_rule)) {
+    if (mod_set) {
+      std::cerr << "Error: 'mod' rule already set.\n";
+      exit(1);
+    }
+    mod_value = std::stoi(match[1]);
+    mod_set = true;
+    return;
+  }
+
+  if (std::regex_match(line, match, axiom_rule)) {
+    int id = std::stoi(match[1]);
+    Polynomial poly = parsePolynomial(match[2]);
+    std::unordered_set<std::string> vars = getVariables(poly);
+    allowed_variables.insert(vars.begin(), vars.end());
+    id_to_poly[id] = poly;
+    return;
+  }
+
+  if (std::regex_match(line, match, delete_rule)) {
+    int id = std::stoi(match[1]);
+    id_to_poly.erase(id);
+    return;
+  }
+
+  if (std::regex_match(line, match, percent_rule)) {
+    int target_id = std::stoi(match[1]);
+    std::string operations = match[2];
+    std::string result_str = match[3];
+
+    Polynomial result;
+
+    // Parse each term like "6 * (l32-1)"
+    std::regex term_regex(R"((\d+)\s*\*\s*\(([^)]+)\))");
+    auto it = std::sregex_iterator(operations.begin(), operations.end(), term_regex);
+    auto end = std::sregex_iterator();
+
+    std::unordered_set<std::string> used_vars;
+
+    for (; it != end; ++it) {
+      int poly_id = std::stoi((*it)[1]);
+      std::string multiplier_expr = (*it)[2];
+
+      if (id_to_poly.find(poly_id) == id_to_poly.end()) {
+        std::cerr << "Error in line with ID " << target_id << ": Unknown polynomial ID" << poly_id << "\n";
+        exit(1);
+      }
+
+      const Polynomial& base = id_to_poly[poly_id];
+      Polynomial multiplier = parsePolynomial(multiplier_expr);
+
+      // Check that multiplier uses no new variables
+      if (!isSubset(getVariables(multiplier), allowed_variables)) {
+        std::cerr << "Error in line with ID " << target_id << ": Invalid multiplier introduces new variables\n";
+        exit(1);
+      }
+
+      Polynomial term = multiplyPolynomials(base, multiplier);
+      result = addPolynomials(result, term);
+    }
+
+    Polynomial expected = parsePolynomial(result_str);
+
+    if (!polynomialsEqual(result, expected)) {
+      std::cerr << "Mismatch in proof for ID " << target_id << "\n";
+      exit(1);
+    }
+
+    id_to_poly[target_id] = expected;
+
+    if (polynomialsOne(expected)) {  
+      while (!substitution_stack.empty()) {
+        auto [var, value] = substitution_stack.back();
+        substitution_stack.pop_back();
+        // Remove the resolved root from declared_roots
+        declared_roots[var].erase(value);
+        std::cout << "✅ Derived 1 under assumption " << var << " = " << value << "\n";
+        std::cout << "Removed root " << value << " for variable " << var << "\n";
+
+        // If no more roots left for var, we can pop the substitution
+        if (declared_roots[var].empty()) {
+          std::cout << "▶ All roots for variable " << var << " resolved — closing branch.\n";
+          declared_roots.erase(var);
+          
+
+          // Rebuild current substitution
+          current_substitution.clear();
+          for (const auto& [v, val] : substitution_stack) {
+            current_substitution[v] = val;
+          }
+        } else {
+          // There are still unresolved roots for this variable, stop recursion
+          std::cout << "Remaining roots for variable " << var << ": ";
+          for (int root : declared_roots[var]) {
+            std::cout << root << " ";
+          }
+          std::cout << "\n";
+          break;
+        }
+      }
+
+      if (declared_roots.empty()) {
+        std::cout << "No active substitutions left.\n";
+      } else {
+        std::cout << "Active substitutions: ";
+        for (const auto& [var, val] : substitution_stack) {
+          std::cout << var << "=" << val << " ";
+        }
+        std::cout << "\n";
+      }
+    }
+
+    return;
+  }
+
+  if (std::regex_match(line, match, root_rule)) {
+    int id = std::stoi(match[1]);
+    std::string var = match[2];
+    std::istringstream roots_stream(match[3]);
+    std::vector<int> roots;
+    int r;
+    while (roots_stream >> r) {
+      roots.push_back(r);
+    }
+
+    // Check existence
+    if (id_to_poly.find(id) == id_to_poly.end()) {
+      std::cerr << "Error: Unknown polynomial ID " << id << " in root rule.\n";
+      exit(1);
+    }
+
+    Polynomial poly = id_to_poly[id];
+
+    // Check univariate
+    if (!isUnivariateIn(poly, var)) {
+      std::cerr << "Error: Polynomial ID " << id << " is not univariate in variable '" << var << "'\n";
+      exit(1);
+    }
+
+    // Check all roots
+    for (int root : roots) {
+      int eval = evaluateAt(poly, var, root);
+      if (eval != 0) {
+        std::cerr << "Error: " << root << " is not a root of polynomial ID " << id << "\n";
+        exit(1);
+      }
+
+      declared_roots[var].insert(root);
+    }
+    return;
+  }
+
+  if (std::regex_match(line, match, branch_rule)) {
+    std::string var = match[1];
+    int value = std::stoi(match[2]);
+
+    if (declared_roots.count(var) == 0 || declared_roots[var].count(value) == 0) {
+      std::cerr << "Error: Instantiation of " << var << " = " << value
+                << " is invalid — root not declared.\n";
+      exit(1);
+    }
+
+    substitution_stack.emplace_back(var, value);
+    current_substitution[var] = value;
+
+    std::cout << "Branch on " << var << " = " << value << std::endl;
+    return;
+  }
+
+  std::cerr << "Unrecognized or invalid line:\n"
+            << line << std::endl;
+  exit(1);
 }
