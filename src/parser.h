@@ -29,19 +29,15 @@ struct Token {
     TokenType type;
     std::string value;
 };
-
+/*------------------------------------------------------------------------*/
 // Functions
-Polynomial parsePolynomial(const std::string& input);
 
-
-Polynomial parsePolynomialExpr(std::vector<Token>& tokens, size_t& index);
-Polynomial parseTerm(std::vector<Token>& tokens, size_t& index);
 Polynomial parseFactor(std::vector<Token>& tokens, size_t& index);
-Polynomial parseExpression(std::vector<Token>& tokens, size_t& i);
-Monomial parseMonomialFromIdentifier(const std::string& varname, int exponent = 1);
 
 // Interpreter
-void processLine(std::string line);
+void processLine(std::string line, int lineno);
+
+void printFinalStatistics();
 
 /*------------------------------------------------------------------------*/
 #endif  // PACHECK2_SRC_PARSER_H_

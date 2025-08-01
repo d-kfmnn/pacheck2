@@ -18,17 +18,26 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  std::cout << "==========================================" << std::endl;
+  std::cout << "         Pacheck Proof Checker " << VERSION << std::endl;
+  std::cout << "==========================================" << std::endl;
+
   std::ifstream infile(argv[1]);
   if (!infile.is_open()) {
     std::cerr << "Error: Cannot open file " << argv[1] << std::endl;
     return 1;
   }
+  std::cout << "Pacheck reads proof from file: " << argv[1] << std::endl;
 
   std::string line;
+  int i = 1;
   while (std::getline(infile, line)) {
     if (line.empty() || line[0] == 'c') continue;  // skip empty and comment lines
-    processLine(line);
+    processLine(line, i++);
   }
+
+  printFinalStatistics();
+  std::cout << "Proof check completed successfully." << std::endl;
 
   infile.close();
   return 0;
